@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Druckluftanlage MetroPT-3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+/* Plan: pastellige Spielzeugfabrik. Ein Abschnitt: animierte Anlage (Canvas) + Signaltafel + Ereignisprotokoll + Detailpanel. */
+:root {
+  --bg: #edf5fc;
+  --surface: #ffffff;
+  --ink: #26354d;
+  --muted: #64748b;
+  --line: #d4e2ef;
+  --pipe: #7fb0dc;
+  --pipe-dark: #4f86b8;
+  --air: #ffad4d;
+  --alert: #f2667b;
+  --ok: #3fbf98;
+  --digital: #8f7ff0;
+  --soft: #f6f9fd;
+  --font-display: "Baloo 2", "Trebuchet MS", sans-serif;
+  --font-body: "Nunito", "Segoe UI", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141c27; --surface: #1d2836; --ink: #e6eef8; --muted: #9fb0c4; --line: #2e3d50;
+    --pipe: #5d8fbd; --pipe-dark: #8cbbe6; --air: #ffb965; --alert: #ff8396; --ok: #5fd3ad; --digital: #a99bff; --soft: #18222f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141c27; --surface: #1d2836; --ink: #e6eef8; --muted: #9fb0c4; --line: #2e3d50;
+  --pipe: #5d8fbd; --pipe-dark: #8cbbe6; --air: #ffb965; --alert: #ff8396; --ok: #5fd3ad; --digital: #a99bff; --soft: #18222f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.55; }
+main { max-width: 1060px; margin: 0 auto; padding: 32px 18px 64px; display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: 2.2rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.12rem; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--muted); font-size: 1.05rem; }
+header { display: grid; gap: 10px; }
+.tag { font-family: var(--font-mono); font-size: .76rem; color: var(--muted); }
+section { display: grid; gap: 14px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; box-shadow: 0 6px 18px rgba(60, 100, 150, .07); }
+code, .mono { font-family: var(--font-mono); font-size: .86em; }
+
+/* Live plant */
+.plant { display: grid; gap: 14px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.toolbar .sep { width: 1px; height: 26px; background: var(--line); margin: 0 4px; }
+.btn { font: inherit; font-weight: 700; font-size: .92rem; padding: 7px 14px; border-radius: 999px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--pipe); }
+.btn.small { font-size: .82rem; padding: 4px 11px; }
+.btn.small[aria-pressed="true"] { background: var(--alert); border-color: var(--alert); color: #fff; }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.btn.leak[aria-pressed="true"] { background: var(--alert); border-color: var(--alert); color: #fff; }
+.btn:focus-visible { outline: 3px solid var(--air); outline-offset: 2px; }
+.clock { margin-left: auto; font-family: var(--font-mono); font-size: .9rem; color: var(--muted); }
+.stage { position: relative; overflow-x: auto; border-radius: 14px; background: var(--soft); }
+#plant { display: block; width: 100%; min-width: 760px; height: auto; aspect-ratio: 1000 / 420; cursor: pointer; }
+.hint { font-size: .85rem; color: var(--muted); }
+.dash { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .dash { grid-template-columns: 1fr; } }
+.leds { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.led { display: flex; align-items: center; gap: 8px; background: var(--soft); border-radius: 12px; padding: 7px 10px; font-family: var(--font-mono); font-size: .8rem; }
+.led i { width: 13px; height: 13px; border-radius: 50%; background: var(--line); flex: none; transition: background .15s, box-shadow .15s; }
+.led.on i { background: var(--digital); box-shadow: 0 0 0 4px color-mix(in srgb, var(--digital) 25%, transparent); }
+.led.on.bad i { background: var(--alert); box-shadow: 0 0 0 4px color-mix(in srgb, var(--alert) 25%, transparent); }
+.led .v { white-space: nowrap; margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink); }
+.led.analog i { border-radius: 3px; background: var(--pipe); }
+.box-title { font-family: var(--font-display); font-size: 1rem; margin-bottom: 8px; display: flex; gap: 8px; align-items: baseline; }
+.box-title small { font-family: var(--font-body); font-size: .8rem; color: var(--muted); font-weight: 400; }
+#trend { display: block; width: 100%; height: 120px; }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-family: var(--font-mono); font-size: .8rem; max-height: 196px; overflow: hidden; }
+.log li { display: flex; gap: 10px; padding: 4px 8px; border-radius: 8px; background: var(--soft); }
+.log li .t { color: var(--muted); }
+.log li.new { animation: pop .5s ease-out; }
+@keyframes pop { from { background: color-mix(in srgb, var(--digital) 30%, transparent); } }
+.gapline { font-size: .85rem; color: var(--muted); margin-top: 8px; }
+.gapline b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.detail { display: grid; gap: 10px; border-left: 6px solid var(--air); }
+.detail ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.detail li b { font-family: var(--font-mono); font-weight: 500; }
+.pill { display: inline-block; font-family: var(--font-mono); font-size: .7rem; padding: 1px 8px; border-radius: 999px; color: #fff; vertical-align: 1px; margin-right: 4px; }
+.pill.a { background: var(--pipe-dark); }
+.pill.d { background: var(--digital); }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: .86rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+
+/* Section 2+ */
+.controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.controls button { font: inherit; font-weight: 700; font-size: .92rem; padding: 7px 14px; border-radius: 999px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.controls button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--surface); }
+.controls button:focus-visible { outline: 3px solid var(--air); outline-offset: 2px; }
+canvas#sim { width: 100%; height: 300px; display: block; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.stat { background: var(--soft); border-radius: 12px; padding: 10px 12px; }
+.stat .k { font-size: .8rem; color: var(--muted); }
+.stat .v { font-family: var(--font-display); font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.stat.warn .v { color: var(--alert); }
+.note { font-size: .85rem; color: var(--muted); }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 640px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .76rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+td.mono { white-space: nowrap; }
+tr.hl td { background: color-mix(in srgb, var(--air) 12%, transparent); }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; counter-reset: s; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: grid; gap: 6px; align-content: start; }
+.step::before { counter-increment: s; content: "Schritt " counter(s); font-family: var(--font-mono); font-size: .74rem; color: var(--air); font-weight: 500; }
+.step p { font-size: .9rem; color: var(--muted); }
+.compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.compare .panel { display: grid; gap: 8px; }
+.compare ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: .92rem; }
+footer { font-size: .82rem; color: var(--muted); display: grid; gap: 4px; }
+footer a { color: var(--pipe-dark); }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <div class="tag">MetroPT-3 · UCI #791 · Metro do Porto · 02–08/2020 · ca. alle 10 s gemessen</div>
+  <h1>Die Druckluftanlage im Metro-Zug (MetroPT-3)</h1>
+  <p class="lede">Auf dem Dach eines Metro-Zuges in Porto sitzt eine Druckluftanlage (APU). Die Druckluft wird gefiltert, getrocknet, im Behälter gespeichert und versorgt Bremsen und Türen. Die 15 Signale des Datensatzes sind die „Augen“ entlang dieser Anlage.</p>
+</header>
+
+<section aria-labelledby="h-pipe">
+  <h2 id="h-pipe">Der Weg der Druckluft</h2>
+  <div class="panel plant">
+    <div class="toolbar" role="group" aria-label="Simulation steuern">
+      <button class="btn" id="play" type="button" aria-pressed="true">⏸ Pause</button>
+      <button class="btn" id="speed" type="button" aria-pressed="false">Tempo ×1</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="btn" id="m-normal" type="button" aria-pressed="false">Normal</button>
+      <button class="btn leak" id="m-light" type="button" aria-pressed="true">Leichtes Leck</button>
+      <button class="btn leak" id="m-heavy" type="button" aria-pressed="false">Starkes Leck</button>
+      <span class="clock" id="clock">08:00</span>
+    </div>
+    <div class="toolbar" role="group" aria-label="Leckstelle wählen">
+      <span class="hint" style="font-weight:700">Leckstelle:</span>
+      <button class="btn small" type="button" data-loc="hose" aria-pressed="false">Schlauch nach Kompressor</button>
+      <button class="btn small" type="button" data-loc="drain" aria-pressed="false">Ablassventil Abscheider</button>
+      <button class="btn small" type="button" data-loc="dryer" aria-pressed="false">Entlüftungsventil Trockner</button>
+      <button class="btn small" type="button" data-loc="joint" aria-pressed="true">Verbindung vor Behälter</button>
+      <button class="btn small" type="button" data-loc="train" aria-pressed="false">Bremsen / Türen</button>
+    </div>
+    <div class="stage">
+      <canvas id="plant" role="img" aria-label="Animierte Simulation: Der Motor treibt den Kompressor an, Luftteilchen strömen durch Abscheider und Trockner in den Behälter und versorgen den Zug beim Halt. Manometer und Signaltafel aktualisieren sich laufend."></canvas>
+    </div>
+    <p class="hint">Klicke auf ein Bauteil, um die Sensoren dort zu sehen. Wähle Leckstärke und Leckstelle, um zu sehen, wo Luft entweicht. Egal wo das Leck ist: Der Druck fällt schneller und der Kompressor muss früher wieder pumpen. Ein Leck am Trockner-Entlüftungsventil erhöht zusätzlich <code>DV_pressure</code>.</p>
+    <div class="dash" hidden style="display:none">
+      <div class="panel" style="box-shadow:none">
+        <div class="box-title">Signaltafel <small>genau diese Spalten stehen in der CSV-Datei</small></div>
+        <div class="leds" id="leds"></div>
+        <div class="box-title" style="margin-top:14px">Behälterdruck <small>letzte 30 min · oranges Band = Kompressor pumpt</small></div>
+        <canvas id="trend" aria-label="Druckverlauf der letzten 30 Minuten"></canvas>
+      </div>
+      <div class="panel" style="box-shadow:none">
+        <div class="box-title">Ereignisprotokoll <small>das, was OTALA liest</small></div>
+        <ul class="log" id="log"></ul>
+        <p class="gapline">Pause zwischen zwei Pumpvorgängen: zuletzt <b id="gap-last">–</b>, im Mittel <b id="gap-avg">–</b></p>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--pipe-dark)"></i>Analog (Messwerte) → SOM</span>
+      <span><i class="dot" style="background:var(--digital)"></i>Digital (0/1) → OTALA</span>
+      <span><i class="dot" style="background:var(--air)"></i>Druckluft</span>
+      <span><i class="dot" style="background:var(--alert)"></i>Entweichende Luft</span>
+    </div>
+    <p class="note">Die Animation ist eine <b>vereinfachte Simulation</b> mit angenommenen Zahlen zur Veranschaulichung, keine echten Messdaten. Die Schwellen 8,2 bar und 7 bar stammen aus der Datensatzbeschreibung, Zyklus und Motorstrom orientieren sich an den Februar-Daten (ca. 2 min Pumpen, ca. 30 min Pause).</p>
+  </div>
+  <div class="panel detail" id="detail" aria-live="polite"></div>
+</section>
+
+
+</main>
+<script>
+const UNITS = {
+  motor: {
+    name: "Elektromotor",
+    text: "Der Motor treibt den Kompressor an. Am Motorstrom erkennt man, was der Kompressor gerade macht.",
+    sensors: [["a","Motor_current","Motorstrom (A): ca. 0 A aus, ca. 4 A Leerlauf, ca. 6 A beim Pumpen, kurz bis ca. 9 A beim Anlaufen."]],
+    leak: "Bei einem Luftleck pumpt der Kompressor häufiger oder dauerhaft, der Strom bleibt lange bei ca. 6 A."
+  },
+  comp: {
+    name: "Kompressor",
+    text: "Saugt Umgebungsluft an und verdichtet sie auf hohen Druck. Öl schmiert und kühlt den Kompressor. Ventile entscheiden, ob er pumpt oder im Leerlauf läuft.",
+    sensors: [
+      ["a","TP2","Druck am Kompressorausgang (bar): beim Pumpen ca. 8–10 bar, sonst ca. 0."],
+      ["a","Oil_temperature","Öltemperatur des Kompressors (°C)."],
+      ["d","COMP","Ansaugventil: 1, wenn keine Luft angesaugt wird (Kompressor aus oder im Leerlauf)."],
+      ["d","DV_eletric","Auslassventil: 1, wenn der Kompressor pumpt."],
+      ["d","MPG","Laut Doku Startsignal bei < 8,2 bar. In den Daten jedoch 0 beim Pumpen und 1 sonst (wie COMP)."],
+      ["d","Oil_level","Ölstand. In den Daten meist 1, vermutlich 1 = normal."]
+    ],
+    leak: "Bei einem Luftleck pumpt der Kompressor häufiger und länger, das Öl wird heißer."
+  },
+  filter: {
+    name: "Zyklonabscheider",
+    text: "Verdichtete Luft enthält Wasser und Öltröpfchen. Der Zyklon schleudert sie an die Wand, unten sammeln sie sich und werden regelmäßig abgelassen.",
+    sensors: [["a","H1","Laut Doku Druckabfall beim Ablassen des Abscheiders. In den Daten gegenläufig zu TP2: ca. 0 beim Pumpen, sonst etwa Systemdruck."]],
+    leak: "Ein klemmendes Ablassventil wäre selbst eine Leckstelle."
+  },
+  dryer: {
+    name: "Zwei Lufttrocknertürme",
+    text: "Ein Turm trocknet die Luft, der andere wird regeneriert und gibt die aufgenommene Feuchtigkeit nach außen ab. Danach tauschen sie die Rollen.",
+    sensors: [
+      ["a","DV_pressure","Druck in der Entlüftungsleitung (bar): fast immer ca. 0, kurze Spitzen beim Entlüften."],
+      ["d","Towers","Welcher Turm trocknet. In den Daten meist 1, kurz 0 während des Pumpens."],
+      ["d","Pressure_switch","Erkennt das Entlüften der Türme. In den Daten meist 1, kurz 0 bei einem Ereignis."]
+    ],
+    leak: "Bei den Luftlecks #1–#3 blieb DV_pressure dauerhaft bei ca. 2 bar, ein Hinweis auf ein offenes Entlüftungsventil."
+  },
+  tank: {
+    name: "Luftbehälter (Reservoir)",
+    text: "Speichert die Druckluft, damit Bremsen und Türen sofort versorgt werden, ohne auf den Kompressor zu warten.",
+    sensors: [
+      ["a","Reservoirs","Druck im Behälter (bar). Wichtigstes Signal für den Zyklus (Sägezahn zwischen ca. 8,1 und 10,1 bar)."],
+      ["d","LPS","1, wenn der Druck unter ca. 7 bar fällt: Niederdruckwarnung."],
+      ["d","Caudal_impulses","Laut Doku Impulse des Luftdurchflusses. In den Daten nur 0/1, nicht auswertbar."]
+    ],
+    leak: "Bei einem Luftleck fällt der Druck schneller. Bei starkem Leck sinkt er unter 7 bar und LPS wird aktiv."
+  },
+  panel: {
+    name: "Pneumatiktafel → Bremsen, Türen",
+    text: "Verteilt die Druckluft an die Verbraucher des Zuges. Jedes Bremsen und jedes Öffnen der Türen verbraucht Luft.",
+    sensors: [["a","TP3","Druck an der Pneumatiktafel (bar). In den Daten praktisch identisch mit Reservoirs."]],
+    leak: "Ein Leck bei den Verbrauchern lässt den Druck ebenfalls schneller fallen."
+  }
+};
+
+const detailEl = document.getElementById("detail");
+function showUnit(id) {
+  const u = UNITS[id];
+  const items = u.sensors.map(([t, n, d]) =>
+    `<li><span class="pill ${t}">${t === "a" ? "analog" : "digital"}</span><b>${n}</b>: ${d}</li>`).join("");
+  detailEl.innerHTML = `<h3>${u.name}</h3><p>${u.text}</p><ul>${items}</ul><p><b>Bei einem Luftleck:</b> ${u.leak}</p>`;
+}
+showUnit("comp");
+
+/* ---------- Live plant ---------- */
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const LEAKS = { normal: 0, light: 0.08, heavy: 0.42 };
+const LOC_NAME = { hose: "Schlauch nach Kompressor", dryer: "Entlüftungsventil Trockner", drain: "Ablassventil Abscheider", joint: "Verbindung vor Behälter", train: "Bremsen / Türen" };
+function leakPoint() {
+  switch (S.leakAt) {
+    case "hose": return { x: 286, y: 182 };
+    case "dryer": return { x: 440 + S.tower * 82 + 33, y: 92 };
+    case "drain": return { x: 352, y: 244 };
+    case "train": return { x: 880, y: 236 };
+    default: return { x: 616, y: 182 };
+  }
+}
+const S = {
+  t: 0, p: 9.4, load: false, leakMode: "light", leakAt: "joint", tower: 0, towerT: 0, oil: 62, startPulse: 0,
+  h1Pulse: 0, idleT: 0, drain: 0, drainT: 0, stopNow: false, starts: [], running: !reduceMotion, speed: 1, rot: 0, piston: 0, door: 0
+};
+const ON = 8.2, OFF = 10.0, PUMP = 0.42;
+const hist = [];           // [t, p, load]
+const events = [];         // {t, text}
+let parts = [], puffs = [], mist = [], back = [], drops = [];
+
+function fmtClock(t) {
+  const m = Math.floor(480 + t);
+  return String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+}
+function logEvent(text) {
+  events.unshift({ t: S.t, text });
+  if (events.length > 8) events.pop();
+  renderLog(true);
+}
+
+function stepSim(dt) {
+  const leak = LEAKS[S.leakMode];
+  const stopNow = (S.t % 6) < 0.75;
+  if (stopNow && !S.stopNow) logEvent("Zug hält: Bremsen + Türen");
+  S.stopNow = stopNow;
+  const use = 0.05 + (stopNow ? 0.28 : 0) + leak;
+  if (!S.load && S.p < ON) {
+    S.load = true; S.startPulse = 0.12; S.idleT = 0;
+    S.starts.push(S.t);
+    S.tower = 1 - S.tower; S.h1Pulse = 0.15;
+    logEvent("DV_eletric = 1 → Kompressor pumpt");
+  }
+  if (S.load && S.p >= OFF) { S.load = false; S.idleT = 7; logEvent("DV_eletric = 0 → Leerlauf (ca. 7 min)"); }
+  const wasLow = S.p < 7;
+  S.p += ((S.load ? PUMP : 0) - use) * dt;
+  S.p = Math.max(5.5, Math.min(10.4, S.p));
+  if (!wasLow && S.p < 7) logEvent("LPS = 1 → Druck < 7 bar");
+  if (wasLow && S.p >= 7) logEvent("LPS off");
+  S.oil += ((S.load ? 78 : 60) - S.oil) * 0.08 * dt;
+  S.startPulse = Math.max(0, S.startPulse - dt);
+  if (S.idleT > 0) { S.idleT -= dt; if (S.idleT <= 0 && !S.load) logEvent("Motor aus"); }
+  S.h1Pulse = Math.max(0, S.h1Pulse - dt);
+  S.drainT += dt;
+  if (S.drainT > 1.5) { S.drainT = 0; S.drain = 0.25; }
+  S.drain = Math.max(0, S.drain - dt);
+  S.t += dt;
+  hist.push([S.t, S.p, S.load]);
+  while (hist.length && hist[0][0] < S.t - 30) hist.shift();
+}
+
+/* signal values derived from state */
+function signals() {
+  const current = S.load ? (S.startPulse > 0 ? 9 : 6) : (S.idleT > 0 ? 4 : 0.04);
+  return {
+    TP2: S.load ? S.p + 0.3 : 0,
+    Reservoirs: S.p,
+    TP3: S.p - 0.05,
+    Oil_temperature: S.oil,
+    Motor_current: current,
+    DV_pressure: (S.h1Pulse > 0 ? 1.2 : 0) + (S.leakAt === "dryer" && LEAKS[S.leakMode] > 0 ? 2.0 : 0),
+    H1: S.load ? 0 : S.p,
+    COMP: S.load ? 0 : 1,
+    DV_eletric: S.load ? 1 : 0,
+    MPG: S.load ? 0 : 1,
+    LPS: S.p < 7 ? 1 : 0,
+    Towers: S.load ? S.tower : 1,
+    Pressure_switch: S.h1Pulse > 0 ? 1 : 0,
+    Oil_level: 0,
+    Caudal_impulses: S.load ? 1 : 0
+  };
+}
+const LED_ORDER = [
+  ["Reservoirs", "a", "bar"], ["TP2", "a", "bar"], ["Oil_temperature", "a", "°C"], ["Motor_current", "a", "A"], ["DV_pressure", "a", "bar"], ["H1", "a", "bar"],
+  ["DV_eletric", "d"], ["COMP", "d"], ["MPG", "d"], ["LPS", "d"], ["Towers", "d"]
+];
+const ledsEl = document.getElementById("leds");
+ledsEl.innerHTML = LED_ORDER.map(([n, t]) =>
+  `<div class="led ${t === "a" ? "analog" : ""}" id="led-${n}"><i></i><span>${n}</span><span class="v"></span></div>`).join("");
+function renderLeds() {
+  const s = signals();
+  LED_ORDER.forEach(([n, t, unit]) => {
+    const el = document.getElementById("led-" + n);
+    const v = s[n];
+    if (t === "a") el.querySelector(".v").textContent = v.toFixed(1).replace(".", ",") + " " + unit;
+    else {
+      el.classList.toggle("on", !!v);
+      el.classList.toggle("bad", n === "LPS" && !!v);
+      el.querySelector(".v").textContent = v;
+    }
+  });
+}
+const logEl = document.getElementById("log");
+function renderLog(fresh) {
+  logEl.innerHTML = events.map((e, i) => `<li class="${fresh && i === 0 ? "new" : ""}"><span class="t">${fmtClock(e.t)}</span><span>${e.text}</span></li>`).join("");
+  const st = S.starts;
+  const gaps = st.slice(1).map((s, i) => s - st[i]).slice(-6);
+  document.getElementById("gap-last").textContent = gaps.length ? gaps[gaps.length - 1].toFixed(1).replace(".", ",") + " min" : "–";
+  document.getElementById("gap-avg").textContent = gaps.length ? (gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(1).replace(".", ",") + " min" : "–";
+}
+
+/* ---------- Drawing ---------- */
+const cv = document.getElementById("plant");
+const g = cv.getContext("2d");
+const W = 1000, H = 420, PY = 190;
+const HIT = {
+  motor: [20, 120, 140, 260], comp: [150, 120, 270, 260], filter: [300, 120, 400, 260],
+  dryer: [430, 30, 600, 300], tank: [640, 40, 800, 260], panel: [820, 120, 990, 280]
+};
+function rr(x, y, w, h, r) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); }
+function label(x, y, title, chips) {
+  g.textAlign = "center";
+  g.fillStyle = css("--ink"); g.font = "700 15px Nunito, sans-serif"; g.fillText(title, x, y);
+  g.font = "500 10.5px 'JetBrains Mono', monospace";
+  chips.forEach(([t, n], i) => { g.fillStyle = t === "a" ? css("--pipe-dark") : css("--digital"); g.fillText(n, x, y + 16 + i * 13); });
+}
+function face(x, y, s, happy) {
+  g.fillStyle = css("--ink");
+  g.beginPath(); g.arc(x - 7 * s, y, 2.4 * s, 0, 7); g.arc(x + 7 * s, y, 2.4 * s, 0, 7); g.fill();
+  g.strokeStyle = css("--ink"); g.lineWidth = 1.8; g.beginPath();
+  if (happy) g.arc(x, y + 3 * s, 5 * s, 0.15 * Math.PI, 0.85 * Math.PI);
+  else { g.moveTo(x - 5 * s, y + 9 * s); g.quadraticCurveTo(x, y + 4 * s, x + 5 * s, y + 9 * s); }
+  g.stroke();
+}
+
+function draw() {
+  const surf = css("--surface"), ink = css("--ink"), pipe = css("--pipe"), air = css("--air"), alert = css("--alert"), muted = css("--muted");
+  g.clearRect(0, 0, W, H);
+  const stressed = S.p < 7.6;
+
+  // pipes
+  g.lineCap = "round"; g.strokeStyle = pipe; g.lineWidth = 14;
+  g.beginPath(); g.moveTo(270, PY); g.lineTo(820, PY); g.stroke();
+  g.lineWidth = 6; g.strokeStyle = muted; g.globalAlpha = .5;
+  g.beginPath(); g.moveTo(122, PY); g.lineTo(150, PY); g.stroke(); g.globalAlpha = 1;
+  // feedback loop
+  g.setLineDash([6, 6]); g.strokeStyle = muted; g.lineWidth = 1.5; g.globalAlpha = .7;
+  g.beginPath(); g.moveTo(905, 330); g.lineTo(905, 372); g.lineTo(10, 372); g.lineTo(10, PY); g.lineTo(16, PY); g.stroke();
+  g.setLineDash([]); g.fillStyle = muted; g.beginPath(); g.moveTo(16, PY - 6); g.lineTo(16, PY + 6); g.lineTo(24, PY); g.fill(); g.globalAlpha = 1;
+  g.font = "600 12px Nunito, sans-serif"; g.textAlign = "center"; g.fillStyle = muted;
+  g.fillText("Zug verbraucht Luft → Druck fällt unter ca. 8,2 bar → Kompressor pumpt wieder", 480, 394);
+
+  // particles
+  g.fillStyle = air;
+  parts.forEach(pt => { g.beginPath(); g.arc(pt.x, PY + pt.dy, 4, 0, 7); g.fill(); });
+
+  // leak crack + puffs
+  const leak = LEAKS[S.leakMode];
+  if (leak > 0) {
+    const lp = leakPoint();
+    g.strokeStyle = alert; g.lineWidth = 3; g.beginPath(); g.moveTo(lp.x - 4, lp.y - 1); g.lineTo(lp.x + 2, lp.y + 6); g.lineTo(lp.x - 3, lp.y + 11); g.stroke();
+    g.fillStyle = alert; g.font = "700 12px Nunito, sans-serif"; g.textAlign = "center";
+    g.fillText("pfffh…", lp.x + (S.leakAt === "dryer" ? 46 : 0), lp.y - (S.leakAt === "train" ? -40 : 44));
+  }
+  puffs.forEach(pf => { g.globalAlpha = Math.max(0, pf.life); g.fillStyle = alert; g.beginPath(); g.arc(pf.x, pf.y, pf.r, 0, 7); g.fill(); });
+  g.globalAlpha = 1;
+
+  // motor
+  g.fillStyle = surf; g.strokeStyle = ink; g.lineWidth = 2.5;
+  g.beginPath(); g.arc(70, PY, 46, 0, 7); g.fill(); g.stroke();
+  g.save(); g.translate(70, PY); g.rotate(S.rot);
+  g.fillStyle = css("--pipe-dark");
+  for (let i = 0; i < 4; i++) { g.rotate(Math.PI / 2); g.beginPath(); g.ellipse(0, -20, 8, 18, 0, 0, 7); g.fill(); }
+  g.fillStyle = ink; g.beginPath(); g.arc(0, 0, 6, 0, 7); g.fill(); g.restore();
+  label(70, 268, "Motor", [["a", "Motor_current"]]);
+
+  // compressor
+  g.fillStyle = surf; g.strokeStyle = ink; g.lineWidth = 2.5; rr(152, 130, 118, 120, 18); g.fill(); g.stroke();
+  g.fillStyle = css("--soft"); rr(176, 146, 40, 62, 8); g.fill(); g.stroke();
+  const py = 150 + (S.load ? (Math.sin(S.piston) + 1) * 18 : 0);
+  g.fillStyle = css("--pipe-dark"); rr(180, py, 32, 18, 5); g.fill();
+  face(244, 172, 1, !stressed);
+  if (S.load) { g.fillStyle = air; g.font = "700 11px Nunito"; g.textAlign = "center"; g.fillText("pumpt!", 211, 238); }
+  else { g.fillStyle = muted; g.font = "700 11px Nunito"; g.textAlign = "center"; g.fillText(S.idleT > 0 ? "Leerlauf" : "aus", 211, 238); }
+  label(211, 278, "Kompressor", [["a", "TP2 · Oil_temperature"], ["d", "DV_eletric · COMP · MPG"]]);
+  // oil thermometer
+  const oilH = Math.min(1, (S.oil - 50) / 35) * 60;
+  g.fillStyle = css("--soft"); rr(254, 120, 10, 66, 5); g.fill(); g.strokeStyle = ink; g.lineWidth = 1.5; g.stroke();
+  g.fillStyle = S.oil > 72 ? alert : air; rr(256, 184 - oilH, 6, oilH, 3); g.fill();
+
+  // cyclone filter
+  g.fillStyle = surf; g.strokeStyle = ink; g.lineWidth = 2.5;
+  g.beginPath(); g.moveTo(312, 138); g.lineTo(388, 138); g.lineTo(362, 238); g.lineTo(338, 238); g.closePath(); g.fill(); g.stroke();
+  g.strokeStyle = css("--pipe-dark"); g.lineWidth = 2;
+  for (let i = 0; i < 3; i++) { g.beginPath(); g.ellipse(350, 160 + i * 22, 24 - i * 6, 5, 0, S.rot * (S.load ? 1.5 : .3) + i, S.rot * (S.load ? 1.5 : .3) + i + 4); g.stroke(); }
+  g.fillStyle = ink; rr(343, 238, 14, 8, 2); g.fill();
+  g.fillStyle = css("--pipe-dark");
+  drops.forEach(d => { g.globalAlpha = Math.max(0, d.life); g.beginPath(); g.ellipse(d.x, d.y, 2.6, 3.6, 0, 0, 7); g.fill(); });
+  g.globalAlpha = 1;
+  if (S.drain > 0) { g.fillStyle = css("--pipe-dark"); g.font = "700 11px Nunito"; g.textAlign = "left"; g.fillText("Wasser ab!", 366, 252); }
+  label(350, 278, "Abscheider", [["a", "H1"]]);
+
+  // dryer towers
+  [0, 1].forEach(i => {
+    const x = 440 + i * 82, active = S.tower === i;
+    g.fillStyle = active ? css("--soft") : surf; g.strokeStyle = active ? css("--ok") : ink; g.lineWidth = active ? 3.5 : 2.5;
+    rr(x, 108, 66, 160, 30); g.fill(); g.stroke();
+    g.font = "700 10px Nunito"; g.textAlign = "center";
+    g.fillStyle = active ? css("--ok") : muted;
+    g.fillText(active ? "trocknet" : "regeneriert", x + 33, 132);
+    g.fillText("Turm " + (i + 1), x + 33, 258);
+    g.fillStyle = surf; g.strokeStyle = ink; g.lineWidth = 2; rr(x + 25, 92, 16, 18, 4); g.fill(); g.stroke();
+    if (!active) {
+      g.strokeStyle = css("--air"); g.lineWidth = 2;
+      for (let k = 0; k < 2; k++) { const ax = x + 22 + k * 22; g.beginPath(); g.moveTo(ax, 238); g.lineTo(ax, 150); g.moveTo(ax - 5, 157); g.lineTo(ax, 150); g.lineTo(ax + 5, 157); g.stroke(); }
+    }
+  });
+  back.forEach(b => { g.fillStyle = css("--air"); g.globalAlpha = .9; g.beginPath(); g.arc(b.x, b.y, 2.8, 0, 7); g.fill(); });
+  mist.forEach(m => { g.globalAlpha = Math.max(0, m.life) * .7; g.fillStyle = css("--pipe"); g.beginPath(); g.arc(m.x, m.y, m.r, 0, 7); g.fill(); });
+  g.globalAlpha = 1;
+  { const ix = 440 + (1 - S.tower) * 82 + 33; g.fillStyle = css("--pipe-dark"); g.font = "700 11.5px Nunito"; g.textAlign = "center";
+    g.fillText("Feuchte entweicht", ix, 30); g.fillStyle = css("--air"); g.fillText("trockene Spülluft ↑", ix, 296); }
+  label(522, 316, "2 Trocknertürme", [["a", "DV_pressure"], ["d", "Towers · Pressure_switch"]]);
+
+  // tank + gauge
+  g.fillStyle = surf; g.strokeStyle = ink; g.lineWidth = 2.5; rr(650, 140, 140, 104, 50); g.fill(); g.stroke();
+  const lvl = Math.max(0, Math.min(1, (S.p - 5.5) / (10.4 - 5.5)));
+  g.save(); rr(650, 140, 140, 104, 50); g.clip();
+  g.fillStyle = air; g.globalAlpha = .35; g.fillRect(650, 244 - lvl * 104, 140, lvl * 104); g.restore(); g.globalAlpha = 1;
+  face(720, 186, 1.1, !stressed);
+  // gauge
+  const gx = 720, gy = 82, gr = 44, a0 = Math.PI * 0.8, a1 = Math.PI * 2.2;
+  const ang = v => a0 + (v - 5) / (11 - 5) * (a1 - a0);
+  g.fillStyle = surf; g.strokeStyle = ink; g.lineWidth = 2.5; g.beginPath(); g.arc(gx, gy, gr, 0, 7); g.fill(); g.stroke();
+  g.lineWidth = 7;
+  g.strokeStyle = alert; g.beginPath(); g.arc(gx, gy, gr - 9, ang(5), ang(7)); g.stroke();
+  g.strokeStyle = css("--digital"); g.beginPath(); g.arc(gx, gy, gr - 9, ang(7), ang(8.2)); g.stroke();
+  g.strokeStyle = css("--ok"); g.beginPath(); g.arc(gx, gy, gr - 9, ang(8.2), ang(10.5)); g.stroke();
+  g.strokeStyle = ink; g.lineWidth = 3; g.beginPath(); g.moveTo(gx, gy);
+  g.lineTo(gx + Math.cos(ang(S.p)) * (gr - 12), gy + Math.sin(ang(S.p)) * (gr - 12)); g.stroke();
+  g.fillStyle = ink; g.beginPath(); g.arc(gx, gy, 4, 0, 7); g.fill();
+  g.font = "700 13px 'JetBrains Mono', monospace"; g.textAlign = "center";
+  g.fillText(S.p.toFixed(1).replace(".", ",") + " bar", gx, gy + 28);
+  g.strokeStyle = ink; g.lineWidth = 2; g.beginPath(); g.moveTo(gx, gy + gr); g.lineTo(gx, 140); g.stroke();
+  label(720, 268, "Behälter", [["a", "Reservoirs"], ["d", "LPS · Caudal_impulses"]]);
+
+  // train
+  const tx = 828, ty = 128;
+  g.fillStyle = surf; g.strokeStyle = ink; g.lineWidth = 2.5; rr(tx, ty, 160, 110, 26); g.fill(); g.stroke();
+  g.fillStyle = css("--pipe"); rr(tx + 14, ty + 16, 40, 30, 8); g.fill(); rr(tx + 106, ty + 16, 40, 30, 8); g.fill();
+  // doors
+  const d = S.door * 14;
+  g.fillStyle = css("--soft"); rr(tx + 62, ty + 16, 36, 82, 6); g.fill();
+  g.fillStyle = css("--pipe-dark"); rr(tx + 62 - d, ty + 16, 18, 82, 4); g.fill(); rr(tx + 80 + d, ty + 16, 18, 82, 4); g.fill();
+  face(tx + 126, ty + 72, 1, !stressed);
+  g.fillStyle = ink; g.beginPath(); g.arc(tx + 36, ty + 116, 10, 0, 7); g.arc(tx + 124, ty + 116, 10, 0, 7); g.fill();
+  if (S.stopNow) { g.fillStyle = alert; g.font = "700 12px Nunito"; g.textAlign = "center"; g.fillText("Bremsen! Türen auf!", tx + 80, ty - 10); }
+  label(908, 278, "Bremsen · Türen", [["a", "TP3"]]);
+}
+
+/* particles update (real time seconds) */
+function updateParticles(dtReal) {
+  const leak = LEAKS[S.leakMode];
+  if (S.load && Math.random() < dtReal * 9) parts.push({ x: 272, dy: (Math.random() - .5) * 6, v: 150 + Math.random() * 40, toTrain: false });
+  if (S.stopNow && Math.random() < dtReal * 10) parts.push({ x: 790, dy: (Math.random() - .5) * 6, v: 140, toTrain: true });
+  parts.forEach(p => p.x += p.v * dtReal);
+  parts = parts.filter(p => p.toTrain ? p.x < 830 : p.x < 650);
+  if (leak > 0 && Math.random() < dtReal * (leak > .2 ? 28 : 9)) puffs.push({ x: leakPoint().x, y: leakPoint().y, vx: (Math.random() - .3) * 30, vy: -40 - Math.random() * 40, r: 4 + Math.random() * 4, life: 1 });
+  puffs.forEach(p => { p.x += p.vx * dtReal; p.y += p.vy * dtReal * (S.leakAt === "train" ? -0.6 : 1); p.r += 6 * dtReal; p.life -= dtReal * 1.1; });
+  puffs = puffs.filter(p => p.life > 0);
+  const ix = 440 + (1 - S.tower) * 82;
+  if (Math.random() < dtReal * (S.h1Pulse > 0 ? 30 : 7)) mist.push({ x: ix + 33 + (Math.random() - .5) * 8, y: 90, vx: (Math.random() - .5) * 14, vy: -22 - Math.random() * 18, r: 3 + Math.random() * 2, life: 1 });
+  mist.forEach(m => { m.x += m.vx * dtReal; m.y += m.vy * dtReal; m.r += 5 * dtReal; m.life -= dtReal * .9; });
+  mist = mist.filter(m => m.life > 0 && m.y > 34);
+  if (Math.random() < dtReal * 6) back.push({ x: ix + 33 + (Math.random() - .5) * 30, y: 250, v: 50 + Math.random() * 20, tw: S.tower });
+  back.forEach(b => b.y -= b.v * dtReal);
+  back = back.filter(b => b.y > 118 && b.tw === S.tower);
+  if (S.drain > 0 && Math.random() < dtReal * 14) drops.push({ x: 350 + (Math.random() - .5) * 6, y: 248, life: 1 });
+  drops.forEach(d => { d.y += 40 * dtReal; d.life -= dtReal * 2.2; });
+  drops = drops.filter(d => d.life > 0);
+  S.rot += dtReal * (S.load ? 9 : 1.2);
+  S.piston += dtReal * (S.load ? 12 : 0);
+  S.door += ((S.stopNow ? 1 : 0) - S.door) * Math.min(1, dtReal * 6);
+}
+
+/* trend chart */
+const tc = document.getElementById("trend"), tg = tc.getContext("2d");
+function drawTrend() {
+  const dpr = window.devicePixelRatio || 1, w = tc.clientWidth, h = tc.clientHeight;
+  if (tc.width !== Math.round(w * dpr)) { tc.width = w * dpr; tc.height = h * dpr; }
+  tg.setTransform(dpr, 0, 0, dpr, 0, 0); tg.clearRect(0, 0, w, h);
+  const L = 34, B = 16, x = t => L + (t - (S.t - 30)) / 30 * (w - L - 4), y = p => 4 + (10.5 - p) / 5 * (h - B - 4);
+  tg.font = "10px Nunito"; tg.fillStyle = css("--muted"); tg.textAlign = "right";
+  [7, 8.2, 10].forEach(p => {
+    tg.strokeStyle = p === 7 ? css("--alert") : p === 8.2 ? css("--digital") : css("--line");
+    tg.setLineDash([4, 4]); tg.beginPath(); tg.moveTo(L, y(p)); tg.lineTo(w, y(p)); tg.stroke(); tg.setLineDash([]);
+    tg.fillText(String(p).replace(".", ","), L - 4, y(p) + 3);
+  });
+  tg.fillStyle = css("--air"); tg.globalAlpha = .55;
+  hist.forEach(([t, , l], i) => { if (l && i) tg.fillRect(x(hist[i - 1][0]), h - B + 4, x(t) - x(hist[i - 1][0]) + .5, 8); });
+  tg.globalAlpha = 1;
+  tg.strokeStyle = css("--pipe-dark"); tg.lineWidth = 2; tg.beginPath();
+  hist.forEach(([t, p], i) => i ? tg.lineTo(x(t), y(p)) : tg.moveTo(x(t), y(p))); tg.stroke();
+}
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(w * H / W * dpr);
+  g.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+  draw(); drawTrend();
+}
+
+let last = performance.now(), ledTimer = 0;
+function frame(now) {
+  const dtReal = Math.min(0.1, (now - last) / 1000); last = now;
+  if (S.running) {
+    let simDt = dtReal * 0.6 * S.speed; // ~0.6 sim-min per second at x1
+    while (simDt > 0) { const d = Math.min(0.05, simDt); stepSim(d); simDt -= d; }
+    updateParticles(dtReal);
+    document.getElementById("clock").textContent = fmtClock(S.t);
+    ledTimer += dtReal;
+    if (ledTimer > 0.12) { ledTimer = 0; renderLeds(); drawTrend(); }
+    draw();
+  }
+  requestAnimationFrame(frame);
+}
+
+/* warm-up so the page opens in a working state */
+for (let i = 0; i < 600; i++) stepSim(0.05);
+events.length = 0; logEvent("Überwachung gestartet");
+renderLeds(); renderLog(false);
+
+/* controls */
+const playBtn = document.getElementById("play");
+function setPlay(on) { S.running = on; playBtn.textContent = on ? "⏸ Pause" : "▶ Start"; playBtn.setAttribute("aria-pressed", on ? "true" : "false"); }
+setPlay(S.running);
+playBtn.addEventListener("click", () => setPlay(!S.running));
+const speeds = [1, 3, 8]; let si = 0;
+document.getElementById("speed").addEventListener("click", e => { si = (si + 1) % speeds.length; S.speed = speeds[si]; e.target.textContent = "Tempo ×" + S.speed; });
+const modes = { normal: "m-normal", light: "m-light", heavy: "m-heavy" };
+Object.entries(modes).forEach(([k, id]) => document.getElementById(id).addEventListener("click", () => {
+  S.leakMode = k;
+  Object.values(modes).forEach(b => document.getElementById(b).setAttribute("aria-pressed", b === id ? "true" : "false"));
+  logEvent(k === "normal" ? "Leck behoben" : (k === "light" ? "Leichtes Leck: " : "Starkes Leck: ") + LOC_NAME[S.leakAt]);
+  if (!S.running) draw();
+}));
+document.querySelectorAll("[data-loc]").forEach(b => b.addEventListener("click", () => {
+  S.leakAt = b.dataset.loc;
+  document.querySelectorAll("[data-loc]").forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+  if (LEAKS[S.leakMode] === 0) { S.leakMode = "light"; Object.values(modes).forEach(id => document.getElementById(id).setAttribute("aria-pressed", id === "m-light" ? "true" : "false")); }
+  puffs = [];
+  logEvent("Leck an: " + LOC_NAME[S.leakAt]);
+  if (!S.running) draw();
+}));
+cv.addEventListener("click", e => {
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+  const hit = Object.entries(HIT).find(([, [x0, y0, x1, y1]]) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
+  if (hit) { showUnit(hit[0]); document.getElementById("detail").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" }); }
+});
+window.addEventListener("resize", resize);
+new MutationObserver(() => { draw(); drawTrend(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+resize();
+requestAnimationFrame(frame);
+
+
+</script>
+</body>
+</html>
