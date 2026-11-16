@@ -8,3 +8,4 @@ minisom
 pyarrow
 jupyter
 ipykernel
+graphviz
